@@ -1,0 +1,20 @@
+{
+  "appId": "com.dingelschwinng.moeagent",
+  "appName": "MoE Agent Chat",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchFadeOutDuration": 300
+    },
+    "StatusBar": {
+      "style": "dark",
+      "backgroundColor": "#1e40af",
+      "overlaysWebView": true
+    }
+  }
+}
