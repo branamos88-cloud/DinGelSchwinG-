@@ -1,0 +1,17 @@
+[package]
+name = "ble-distance"
+version = "0.1.0"
+edition = "2021"
+description = "WASM Module zur exakten BLE-Abstandsbestimmung via RSSI/TxPower"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2.89"
+js-sys = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true
