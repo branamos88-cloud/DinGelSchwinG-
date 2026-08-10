@@ -1,12 +1,8 @@
-import MoEChatInterface from './components/MoEChatInterface'
-import './App.css'
+import NetworkDashboard from './components/NetworkDashboard';
+import './App.css';
 
 function App() {
-  return (
-    <div className="w-full h-screen">
-      <MoEChatInterface />
-    </div>
-  )
+  return <NetworkDashboard />;
 }
 
-export default App
+export default App;
