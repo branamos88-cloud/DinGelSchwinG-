@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-import { QrCode, Bluetooth, Waves, Wifi, ShieldCheck, Smartphone, Zap } from 'lucide-react';
+import { QrCode, Bluetooth, Waves, Wifi, ShieldCheck, Smartphone, Zap, Cable } from 'lucide-react';
 import { nexus, useNexus } from '../context/NexusContext';
 import { toUserMessage } from '../domain/errors';
 
 export interface PairedDevice {
   id: string;
   name: string;
-  method: 'qr' | 'ble' | 'nfc' | 'wifi';
+  method: 'qr' | 'ble' | 'nfc' | 'wifi' | 'adb';
   rssi: number;
   boundAt: string;
 }
@@ -98,6 +98,22 @@ export default function PairingPanel({ onBind }: { onBind?: (device: PairedDevic
           </button>
           <button disabled={!methods.wifi} onClick={() => void bindMethod('wifi')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${pairingMethod === 'wifi' ? 'bg-rose-600 text-white' : 'bg-slate-800/60 text-slate-200'} disabled:opacity-30`}>
             <Wifi className="w-4 h-4" /> WiFi
+          </button>
+          <button
+            disabled={methods.adb === false}
+            onClick={() => {
+              setPairingMethod('wifi');
+              setStatusMsg('ADB-WiFi Discovery…');
+              void nexus.discoverAdb().then((list) => {
+                const first = list[0];
+                if (first) {
+                  finish(first.id, first.name, 'adb', -50);
+                } else setStatusMsg('Kein ADB-Client im WLAN');
+              }).catch((e) => setErr(toUserMessage(e).detail));
+            }}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-slate-800/60 text-slate-200 disabled:opacity-30 col-span-2"
+          >
+            <Cable className="w-4 h-4" /> ADB WiFi
           </button>
         </div>
         <div className="text-xs font-mono mb-2 rounded-lg px-3 py-2 border border-white/10 text-cyan-200">{statusMsg}</div>

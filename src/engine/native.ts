@@ -39,6 +39,18 @@ export interface NativePingResult {
   error?: string;
 }
 
+export interface NativeAdbDevice {
+  id: string;
+  host: string;
+  port: number;
+  pairingPort?: number;
+  name: string;
+  service: 'connect' | 'pairing' | 'classic' | 'nexus';
+  state: 'found' | 'open' | 'cnxn' | 'tls' | 'failed';
+  latencyMs: number | null;
+  banner?: string;
+}
+
 export interface NativeCapabilities {
   platform: string;
   native: boolean;
@@ -46,6 +58,7 @@ export interface NativeCapabilities {
   nfc: boolean;
   usb: boolean;
   wifi: boolean;
+  adb?: boolean;
   sdk?: number;
   manufacturer?: string;
   model?: string;
@@ -62,6 +75,9 @@ interface NexusBridgePlugin {
   usbList(): Promise<{ devices: NativeUsbDevice[] }>;
   wifiInfo(): Promise<NativeWifiInfo>;
   pingHost(opts: { host: string; port?: number; timeoutMs?: number }): Promise<NativePingResult>;
+  adbDiscover(opts?: { durationMs?: number }): Promise<{ devices: NativeAdbDevice[]; localIp?: string; percent: number }>;
+  adbConnect(opts: { host: string; port?: number }): Promise<{ ok: boolean; state: string; banner?: string; latencyMs: number; error?: string }>;
+  adbPair(opts: { host: string; port: number; code: string }): Promise<{ ok: boolean; detail: string }>;
 }
 
 const NexusBridge = registerPlugin<NexusBridgePlugin>('NexusBridge', {
@@ -96,6 +112,7 @@ class WebNexusBridge extends WebPlugin implements NexusBridgePlugin {
       nfc: typeof window !== 'undefined' && 'NDEFReader' in window,
       usb: Boolean(navigator.usb),
       wifi: false,
+      adb: true,
     };
   }
 
@@ -187,6 +204,45 @@ class WebNexusBridge extends WebPlugin implements NexusBridgePlugin {
     return { ssid: '', bssid: '', rssi: 0, frequency: 0, networks: [] };
   }
 
+  async adbDiscover(): Promise<{ devices: NativeAdbDevice[]; localIp?: string; percent: number }> {
+    const hosts = ['127.0.0.1', '192.168.1.1', '192.168.0.1', '192.168.1.20', '10.0.0.1'];
+    const devices: NativeAdbDevice[] = [];
+    for (const host of hosts) {
+      const r = await this.pingHost({ host, port: 5555, timeoutMs: 400 });
+      if (r.ok) {
+        devices.push({
+          id: `adb:${host}:5555`,
+          host,
+          port: 5555,
+          name: `ADB ${host}`,
+          service: 'classic',
+          state: 'open',
+          latencyMs: r.latencyMs,
+        });
+      }
+    }
+    return { devices, percent: 100 };
+  }
+
+  async adbConnect(opts: { host: string; port?: number }) {
+    const r = await this.pingHost({ host: opts.host, port: opts.port ?? 5555, timeoutMs: 1500 });
+    return {
+      ok: r.ok,
+      state: r.ok ? 'open' : 'failed',
+      latencyMs: r.latencyMs ?? 0,
+      error: r.error,
+      banner: r.ok ? 'tcp-open' : undefined,
+    };
+  }
+
+  async adbPair(opts: { host: string; port: number; code: string }) {
+    const r = await this.pingHost({ host: opts.host, port: opts.port, timeoutMs: 1500 });
+    return {
+      ok: r.ok && opts.code.length >= 6,
+      detail: r.ok ? `Pairing-Port ${opts.host}:${opts.port} offen — Code ${opts.code}` : r.error ?? 'Pairing-Port nicht erreichbar',
+    };
+  }
+
   async pingHost(opts: { host: string; port?: number; timeoutMs?: number }): Promise<NativePingResult> {
     const host = opts.host.replace(/^https?:\/\//, '').split('/')[0];
     const start = performance.now();
@@ -222,6 +278,9 @@ export const native = {
   usbList: () => NexusBridge.usbList(),
   wifiInfo: () => NexusBridge.wifiInfo(),
   pingHost: (host: string, port = 443, timeoutMs = 4000) => NexusBridge.pingHost({ host, port, timeoutMs }),
+  adbDiscover: (durationMs = 7000) => NexusBridge.adbDiscover({ durationMs }),
+  adbConnect: (host: string, port = 5555) => NexusBridge.adbConnect({ host, port }),
+  adbPair: (host: string, port: number, code: string) => NexusBridge.adbPair({ host, port, code }),
 };
 
 export { NexusBridge };

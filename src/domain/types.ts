@@ -31,7 +31,7 @@ export interface DiscoveredNode {
   permissions?: DeviceAction[];
   usbVendorId?: number;
   usbProductId?: number;
-  source: 'native' | 'fabric' | 'qr' | 'nfc' | 'wifi' | 'usb';
+  source: 'native' | 'fabric' | 'qr' | 'nfc' | 'wifi' | 'usb' | 'adb';
   online: boolean;
   txPower: number;
   x: number;
@@ -107,7 +107,7 @@ export interface BoundDevice {
   label: string;
   boundBy: string;
   boundAt: string;
-  method: 'qr' | 'ble' | 'nfc' | 'wifi' | 'usb' | 'manual';
+  method: 'qr' | 'ble' | 'nfc' | 'wifi' | 'usb' | 'adb' | 'manual';
   rssi: number;
   permissions?: DeviceAction[];
 }
@@ -121,7 +121,7 @@ export interface NetworkConfig {
   meshIntervalMs: number;
   meshFreqStart: number;
   meshFreqEnd: number;
-  pairingMethods: { qr: boolean; ble: boolean; nfc: boolean; wifi: boolean };
+  pairingMethods: { qr: boolean; ble: boolean; nfc: boolean; wifi: boolean; adb: boolean };
   wasmCalibrationRssiRef: number;
   wasmCalibrationDistRef: number;
 }
@@ -135,7 +135,7 @@ export const DEFAULT_NETWORK_CONFIG: NetworkConfig = {
   meshIntervalMs: 2000,
   meshFreqStart: 2400,
   meshFreqEnd: 2500,
-  pairingMethods: { qr: true, ble: true, nfc: true, wifi: true },
+  pairingMethods: { qr: true, ble: true, nfc: true, wifi: true, adb: true },
   wasmCalibrationRssiRef: -59,
   wasmCalibrationDistRef: 2.0,
 };
@@ -146,6 +146,29 @@ export interface MeshNode {
   rssi: number;
   active: boolean;
   lastUpdate: string;
+}
+
+export type AdbService = 'connect' | 'pairing' | 'classic' | 'nexus';
+export type AdbState = 'found' | 'probing' | 'open' | 'cnxn' | 'tls' | 'paired' | 'failed';
+
+export interface AdbClient {
+  id: string;
+  host: string;
+  port: number;
+  pairingPort?: number;
+  name: string;
+  service: AdbService;
+  state: AdbState;
+  latencyMs: number | null;
+  lastSeen: number;
+  banner?: string;
+}
+
+export interface DiscoveryProgress {
+  percent: number;
+  phase: string;
+  found: number;
+  adb: number;
 }
 
 export interface TerminalLine {
