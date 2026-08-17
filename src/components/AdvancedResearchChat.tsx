@@ -22,6 +22,7 @@ import {
   Download,
   Upload,
 } from 'lucide-react';
+import { nexus } from '../engine/nexus';
 
 /**
  * Advanced Chat with Online Research & Adaptive Context Loading
@@ -599,10 +600,12 @@ export default function AdvancedResearchChat() {
 
   const simulateResearch = async (query: string) => {
     const activeSources = researchSources.filter(s => s.enabled);
+    const hits = await nexus.research(query);
+    const extra = hits.map(h => `\n• [${h.source}] ${h.title}: ${h.snippet}`).join('');
     const research: ChatMessage = {
       id: `research-${Date.now()}`,
       role: 'research',
-      content: `Researching: "${query}" across ${activeSources.length} sources`,
+      content: `Researching: "${query}" across ${activeSources.length} sources${extra}`,
       timestamp: Date.now(),
       researchSources: activeSources.slice(0, 3),
     };
