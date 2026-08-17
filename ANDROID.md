@@ -6,7 +6,7 @@ Die App läuft **vollständig on-device**. Alle Module sind aktiv:
 |---|---|
 | Login / RBAC | guest → emergency, JWT lokal, Action-Matrix |
 | Nexus 3D | Live-Knoten, WASM-Abstand, Sensorfusion |
-| Discovery | BLE / USB-C / WLAN / NFC / QR |
+| Discovery | BLE / USB-C / WLAN / NFC / QR / **ADB-WiFi** (mDNS + :5555 + CNXN, Fortschritt %) |
 | Pairing | Binden, Gruppen, Sync, Unbind + WebAuthn-Gate |
 | Terminal | PTY-Kommandos, Interlock, Flash/SSH rollenbasiert |
 | Control Room | Clients, Live-Status, Audit-Trail |

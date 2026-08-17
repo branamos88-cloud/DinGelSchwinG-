@@ -28,6 +28,7 @@ import MoEChatInterface from './components/MoEChatInterface';
 import AdvancedResearchChat from './components/AdvancedResearchChat';
 import EnterprisePanel from './components/EnterprisePanel';
 import NetworkSettings from './components/NetworkSettings';
+import AdbWifiPanel from './components/AdbWifiPanel';
 import { ROLE_LABELS, ROLE_LEVELS } from './domain/rbac';
 import './App.css';
 
@@ -97,7 +98,10 @@ function Shell() {
           {tab === 'nexus' && <NetworkDashboard />}
           {tab === 'geraete' && (
             <div className="grid lg:grid-cols-[1fr_320px] gap-4">
-              <PairingPanel />
+              <div className="space-y-4">
+                <AdbWifiPanel />
+                <PairingPanel />
+              </div>
               <StatusBoard />
             </div>
           )}

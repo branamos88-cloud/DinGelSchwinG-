@@ -12,6 +12,8 @@ import {
   NetworkConfig,
   Pairing,
   TerminalLine,
+  AdbClient,
+  DiscoveryProgress,
 } from '../domain/types';
 import { AppError, DeviceError, RbacError } from '../domain/errors';
 import { JwtPayload, Role, canAction, requireAction } from '../domain/rbac';
@@ -44,7 +46,14 @@ type Listener = () => void;
 
 class NexusEngine {
   session: SessionState | null = restoreSession();
-  config: NetworkConfig = store.get('config', DEFAULT_NETWORK_CONFIG);
+  config: NetworkConfig = {
+    ...DEFAULT_NETWORK_CONFIG,
+    ...store.get('config', DEFAULT_NETWORK_CONFIG),
+    pairingMethods: {
+      ...DEFAULT_NETWORK_CONFIG.pairingMethods,
+      ...(store.get('config', DEFAULT_NETWORK_CONFIG).pairingMethods ?? {}),
+    },
+  };
   nodes: DiscoveredNode[] = [];
   bound: BoundDevice[] = store.get('bound', []);
   pairings: Pairing[] = store.get('pairings', []);
@@ -58,6 +67,8 @@ class NexusEngine {
   meshRunning = false;
   scanning = false;
   lastScanAt = 0;
+  discovery: DiscoveryProgress = { percent: 0, phase: 'idle', found: 0, adb: 0 };
+  adbClients: AdbClient[] = [];
   caps: NativeCapabilities = { platform: 'web', native: false, ble: false, nfc: false, usb: false, wifi: false };
   wasm: BLEWasmExports | null = null;
   learnedN = 2;
@@ -143,6 +154,7 @@ class NexusEngine {
       { id: 'other-1', label: 'WiFi-AP-01', kind: 'wifi', sceneType: 'other', rssi: -81 },
       { id: 'other-2', label: 'BLE-Beacon-3', kind: 'ble', sceneType: 'other', rssi: -76 },
       { id: 'dongle-1', label: 'USB-C Dongle Arduino', kind: 'dongle', sceneType: 'other', rssi: -30, usbVendorId: 0x2341, usbProductId: 0x0043 },
+      { id: 'adb-wifi-1', label: 'ADB-WiFi Client', kind: 'network', sceneType: 'client', rssi: -50, address: '192.168.1.42' },
     ];
     seeds.forEach((s, i) => {
       const p = place(i);
@@ -174,8 +186,24 @@ class NexusEngine {
         usbVendorId: s.usbVendorId,
         usbProductId: s.usbProductId,
         bound: this.bound.some((b) => b.id === s.id),
+        tagData: s.id.startsWith('adb-') ? { adb: true, port: 5555, service: 'classic' } : undefined,
       });
     });
+    if (!this.adbClients.some((c) => c.id === 'adb-wifi-1')) {
+      this.adbClients = [
+        ...this.adbClients,
+        {
+          id: 'adb-wifi-1',
+          host: '192.168.1.42',
+          port: 5555,
+          name: 'ADB-WiFi Client',
+          service: 'classic',
+          state: 'found',
+          latencyMs: null,
+          lastSeen: Date.now(),
+        },
+      ];
+    }
   }
 
   private upsertNode(node: DiscoveredNode) {
@@ -326,9 +354,143 @@ class NexusEngine {
     }
   }
 
+
+  private setDiscovery(percent: number, phase: string) {
+    this.discovery = {
+      percent: Math.max(0, Math.min(100, Math.round(percent))),
+      phase,
+      found: this.nodes.filter((n) => n.online).length,
+      adb: this.adbClients.length,
+    };
+    this.emit();
+  }
+
+  private ingestAdb(devices: Array<{ id: string; host: string; port: number; pairingPort?: number; name: string; service: AdbClient['service']; state: AdbClient['state']; latencyMs: number | null; banner?: string }>) {
+    devices.forEach((d, i) => {
+      const rec: AdbClient = {
+        id: d.id,
+        host: d.host,
+        port: d.port,
+        pairingPort: d.pairingPort,
+        name: d.name,
+        service: d.service,
+        state: d.state,
+        latencyMs: d.latencyMs,
+        lastSeen: Date.now(),
+        banner: d.banner,
+      };
+      const idx = this.adbClients.findIndex((c) => c.id === rec.id);
+      if (idx >= 0) this.adbClients[idx] = rec;
+      else this.adbClients = [...this.adbClients, rec];
+      const p = place(this.nodes.length + i + 12);
+      this.upsertNode({
+        id: rec.id,
+        kind: 'network',
+        label: rec.name,
+        transport: ConnectionType.NETWORK,
+        signal: { rssi: rec.latencyMs != null ? Math.max(-90, -40 - rec.latencyMs / 4) : -55, measuredAt: Date.now() },
+        lastSeen: Date.now(),
+        autoBindable: rec.state === 'cnxn' || rec.state === 'open',
+        source: 'adb',
+        online: rec.state !== 'failed',
+        txPower: -30,
+        ...p,
+        sceneType: 'client',
+        address: `${rec.host}:${rec.port}`,
+        bound: this.bound.some((b) => b.id === rec.id),
+        tagData: { adb: true, port: rec.port, pairingPort: rec.pairingPort, service: rec.service, state: rec.state, banner: rec.banner },
+      });
+    });
+  }
+
+  async discoverAdb(): Promise<AdbClient[]> {
+    this.setDiscovery(8, 'ADB-WiFi starten');
+    this.scanning = true;
+    this.emit();
+    try {
+      this.setDiscovery(25, 'mDNS / NSD');
+      const res = await native.adbDiscover(7000);
+      this.setDiscovery(70, 'TCP :5555 / CNXN');
+      this.ingestAdb(res.devices);
+      this.setDiscovery(100, 'fertig');
+      audit.log({
+        event: 'adb.discover',
+        user: this.session?.user.sub ?? 'offline',
+        role: this.session?.user.role ?? Role.GUEST,
+        resource: 'network',
+        action: 'read',
+        result: 'ok',
+        detail: `${res.devices.length} ADB-Clients`,
+      });
+      return this.adbClients;
+    } catch (e) {
+      this.setDiscovery(100, 'teilweise (Fallback)');
+      throw e;
+    } finally {
+      this.scanning = false;
+      this.emit();
+    }
+  }
+
+  async connectAdb(id: string): Promise<AdbClient> {
+    requireAction(this.token(), 'terminal.network.ssh');
+    const c = this.adbClients.find((x) => x.id === id);
+    if (!c) throw new DeviceError('DEVICE_NOT_CONNECTED', 'ADB-Client nicht gefunden');
+    c.state = 'probing';
+    this.emit();
+    const r = await native.adbConnect(c.host, c.port);
+    c.state = r.ok ? (r.state === 'cnxn' ? 'cnxn' : 'open') : 'failed';
+    c.latencyMs = r.latencyMs;
+    c.banner = r.banner;
+    c.lastSeen = Date.now();
+    this.ingestAdb([c]);
+    if (r.ok) {
+      try { this.bindDevice(c.id, 'adb'); } catch { /* rights */ }
+    }
+    audit.log({
+      event: 'adb.connect',
+      user: this.user().sub,
+      role: this.role(),
+      resource: 'network',
+      action: 'write',
+      result: r.ok ? 'ok' : 'failed',
+      detail: `${c.host}:${c.port} ${c.state}`,
+    });
+    this.emit();
+    return c;
+  }
+
+  async pairAdb(id: string, code: string): Promise<AdbClient> {
+    requireAction(this.token(), 'terminal.network.ssh');
+    const c = this.adbClients.find((x) => x.id === id);
+    if (!c) throw new DeviceError('DEVICE_NOT_CONNECTED', 'ADB-Client nicht gefunden');
+    const port = c.pairingPort ?? 37099;
+    const r = await native.adbPair(c.host, port, code);
+    c.state = r.ok ? 'paired' : 'failed';
+    c.lastSeen = Date.now();
+    this.ingestAdb([c]);
+    audit.log({
+      event: 'adb.pair',
+      user: this.user().sub,
+      role: this.role(),
+      resource: 'network',
+      action: 'write',
+      result: r.ok ? 'ok' : 'failed',
+      detail: r.detail,
+    });
+    this.emit();
+    return c;
+  }
+
   private async scanSilent() {
     try {
-      const [ble, usb, wifi] = await Promise.allSettled([native.bleScan(4500), native.usbList(), native.wifiInfo()]);
+      this.setDiscovery(12, 'BLE / USB / WLAN / ADB');
+      const [ble, usb, wifi, adb] = await Promise.allSettled([
+        native.bleScan(4500),
+        native.usbList(),
+        native.wifiInfo(),
+        native.adbDiscover(4500),
+      ]);
       if (ble.status === 'fulfilled') {
         ble.value.devices.forEach((d, i) => {
           const p = place(this.nodes.length + i);
@@ -413,7 +575,12 @@ class NexusEngine {
           });
         });
       }
+      if (adb.status === 'fulfilled') {
+        this.setDiscovery(80, 'ADB-WiFi Clients');
+        this.ingestAdb(adb.value.devices);
+      }
       this.autoBindDongles();
+      this.setDiscovery(100, this.scanning ? 'Scan' : 'live');
     } catch {
       /* keep fabric */
     }
@@ -868,6 +1035,7 @@ class NexusEngine {
         return [
           'help, whoami, role, devices, scan, bind <id>, unbind <id>, status',
           'rssi [id], ping <host>, mesh start|stop, pair list|sync <id>',
+          'adb [scan|connect <id>|pair <id> <code>|devices]',
           'audit, nodes, flash (developer+), ssh <host> (developer+)',
           'grant <rule>, health, enterprise',
         ];
@@ -916,8 +1084,23 @@ class NexusEngine {
         return audit.list(12).map((a) => `${a.ts.slice(11, 19)} ${a.event} ${a.result} ${a.detail}`);
       case 'nodes':
         return getAllNodeConfigs().map((n) => `${n.category} ${n.nodeId} ${n.endpointUrl}`);
+      case 'adb': {
+        if (!args[0] || args[0] === 'devices' || args[0] === 'scan') {
+          if (args[0] === 'scan') void this.discoverAdb();
+          return this.adbClients.map((c) => `${c.state.padEnd(8)} ${c.host}:${c.port}  ${c.name}  ${c.service}`);
+        }
+        if (args[0] === 'connect' && args[1]) {
+          void this.connectAdb(args[1]);
+          return [`ADB connect ${args[1]}…`];
+        }
+        if (args[0] === 'pair' && args[1] && args[2]) {
+          void this.pairAdb(args[1], args[2]);
+          return [`ADB pair ${args[1]}…`];
+        }
+        return ['Usage: adb scan | adb devices | adb connect <id> | adb pair <id> <code>'];
+      }
       case 'health':
-        return ['ok · on-device nexus · android 11-14'];
+        return [`ok · on-device nexus · android 11-14 · discovery ${this.discovery.percent}%`];
       case 'enterprise':
         return Object.values(ENTERPRISE_NODES).map((n) => `${n.nodeId} · ${n.primaryFunction.slice(0, 80)}`);
       case 'flash': {
@@ -1088,6 +1271,8 @@ class NexusEngine {
       clientId: this.clientId,
       wasmReady: Boolean(this.wasm),
       audit: audit.list(80),
+      discovery: this.discovery,
+      adbClients: this.adbClients,
     };
   }
 }

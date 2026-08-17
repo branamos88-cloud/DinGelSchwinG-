@@ -1,33 +1,8 @@
 import { useState, useCallback } from 'react';
-import { SlidersHorizontal, Wifi, Bluetooth, Radio, Activity, Waves, Zap, Save, RotateCcw } from 'lucide-react';
+import { SlidersHorizontal, Wifi, Bluetooth, Activity, Save } from 'lucide-react';
+import { DEFAULT_NETWORK_CONFIG, NetworkConfig } from '../domain/types';
 
-export interface NetworkConfig {
-  defaultMode: 'ble' | 'wifi' | 'usb';
-  scanIntervalMs: number;
-  bleTxPower: number;
-  bleEnvFactor: number;
-  sensorTimeoutMs: number;
-  meshIntervalMs: number;
-  meshFreqStart: number;
-  meshFreqEnd: number;
-  pairingMethods: { qr: boolean; ble: boolean; nfc: boolean; wifi: boolean };
-  wasmCalibrationRssiRef: number;
-  wasmCalibrationDistRef: number;
-}
-
-const DEFAULT_CONFIG: NetworkConfig = {
-  defaultMode: 'ble',
-  scanIntervalMs: 2000,
-  bleTxPower: -59,
-  bleEnvFactor: 2.0,
-  sensorTimeoutMs: 1000,
-  meshIntervalMs: 2000,
-  meshFreqStart: 2400,
-  meshFreqEnd: 2500,
-  pairingMethods: { qr: true, ble: true, nfc: true, wifi: true },
-  wasmCalibrationRssiRef: -59,
-  wasmCalibrationDistRef: 2.0,
-};
+const DEFAULT_CONFIG = DEFAULT_NETWORK_CONFIG;
 
 export default function NetworkSettings({ config, onChange }: { config: NetworkConfig; onChange: (c: NetworkConfig) => void }) {
   const [local, setLocal] = useState<NetworkConfig>({ ...config });
@@ -101,7 +76,7 @@ export default function NetworkSettings({ config, onChange }: { config: NetworkC
           </div>
           <div className="text-[10px] text-slate-400 mb-1">Paarungsmethoden</div>
           <div className="flex gap-2">
-            {(['qr','ble','nfc','wifi'] as const).map(m => (
+            {(['qr','ble','nfc','wifi','adb'] as const).map(m => (
               <button key={m} onClick={() => update('pairingMethods', { ...local.pairingMethods, [m]: !local.pairingMethods[m] })} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${local.pairingMethods[m] ? 'bg-violet-600 text-white border-violet-400' : 'bg-slate-900 text-slate-400 border-slate-700'}`}>{m.toUpperCase()}</button>
             ))}
           </div>
