@@ -1,0 +1,77 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-33 build-tools;33.0.2 platform-tools'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Tests (73 Unit-/Integrationstests)
+        run: npx vitest run
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build Web-App
+        run: npx vite build --sourcemap false
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Build Release APK (signiert, wenn Secrets gesetzt)
+        working-directory: android
+        env:
+          DSG_KEYSTORE: ${{ secrets.DSG_KEYSTORE }}
+          DSG_KEYSTORE_PASS: ${{ secrets.DSG_KEYSTORE_PASS }}
+          DSG_KEY_ALIAS: ${{ secrets.DSG_KEY_ALIAS }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dingelschwinng-apks
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+
+      - name: Publish Release (bei Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*.apk

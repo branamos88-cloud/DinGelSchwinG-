@@ -1,101 +1,29 @@
-.PHONY: help install build lint type-check dev preview clean android-add android-sync android-build android-apk android-apk-release android-install all-apk
+# DinGelSchwinG NEXUS-BUILDER — Build-Automatisierung
+.PHONY: install build test typecheck android debug-apk release-apk wasm clean
 
-help:
-	@echo "DinGelSchwinG Build Targets"
-	@echo "============================"
-	@echo ""
-	@echo "Web Development:"
-	@echo "  make install        - Install dependencies"
-	@echo "  make dev            - Start Vite dev server on :5173"
-	@echo "  make build          - Build web assets (production)"
-	@echo "  make preview        - Preview production build locally"
-	@echo "  make lint           - Run ESLint (0 warnings required)"
-	@echo "  make type-check     - Run TypeScript type checker"
-	@echo ""
-	@echo "Android APK Build:"
-	@echo "  make android-add             - Add Android platform (one-time)"
-	@echo "  make android-sync            - Sync web build → Android project"
-	@echo "  make android-apk             - Build Debug APK"
-	@echo "  make android-apk-release     - Build Release APK (signed)"
-	@echo "  make android-install         - Install Debug APK on device (requires ADB)"
-	@echo ""
-	@echo "Complete Workflows:"
-	@echo "  make all-apk        - Build & release APK (npm + capacitor + gradle)"
-	@echo "  make clean          - Clean build artifacts"
-	@echo ""
+install:        ## Abhängigkeiten installieren
+	npm ci --legacy-peer-deps
 
-install:
-	npm ci
+wasm:           ## WASM-Modul aus WAT kompilieren
+	node scripts/build-wasm.cjs
 
-dev:
-	npm run dev
-
-build:
+build:          ## Web-App bauen (dist/)
 	npm run build
 
-preview:
-	npm run preview
+test:           ## Komplette Test-Suite (73 Tests)
+	npx vitest run
 
-lint:
-	npm run lint
+typecheck:      ## TypeScript-Prüfung
+	npx tsc --noEmit
 
-type-check:
-	npm run type-check
+android:        ## Android-Projekt synchronisieren
+	npx cap sync android
+
+debug-apk: build android   ## Debug-APK bauen
+	cd android && ./gradlew assembleDebug
+
+release-apk: build android ## Release-APK bauen (unsigned → manuell signieren)
+	cd android && ./gradlew assembleRelease
 
 clean:
-	rm -rf dist/
-	rm -rf android/app/build/
-	rm -rf node_modules/
-	rm -rf releases/
-
-android-add:
-	npm run capacitor:add
-
-android-sync: build
-	npx cap sync android
-
-android-build: android-sync
-	cd android && ./gradlew assembleDebug --no-daemon
-
-android-apk: android-build
-	@echo "✅ Debug APK built:"
-	@find android/app/build/outputs/apk -name "app-debug*.apk" -type f
-
-android-apk-release: build
-	npx cap sync android
-	cd android && ./gradlew assembleRelease --no-daemon
-	@echo "✅ Release APK built:"
-	@find android/app/build/outputs/apk -name "app-release*.apk" -type f
-
-android-install: android-apk
-	@echo "📱 Installing Debug APK via ADB..."
-	cd android && ./gradlew installDebug
-
-all-apk: install type-check lint build
-	@echo "🔨 Building Debug & Release APKs..."
-	npx cap sync android
-	@mkdir -p releases
-	@echo "Building Debug APK..."
-	cd android && ./gradlew assembleDebug --no-daemon
-	@DEBUG_APK=$$(find android/app/build/outputs/apk -name "app-debug*.apk" -type f | head -1); \
-	if [ -f "$$DEBUG_APK" ]; then \
-		VERSION=$$(node -p "require('./package.json').version"); \
-		BUILD_DATE=$$(date '+%Y-%m-%d_%H-%M-%S'); \
-		DEBUG_FILENAME="DinGelSchwinG-v$$VERSION-debug-$$BUILD_DATE.apk"; \
-		cp "$$DEBUG_APK" "releases/$$DEBUG_FILENAME"; \
-		echo "✅ Debug APK: releases/$$DEBUG_FILENAME"; \
-	fi
-	@echo ""
-	@echo "Building Release APK..."
-	cd android && ./gradlew assembleRelease --no-daemon
-	@RELEASE_APK=$$(find android/app/build/outputs/apk -name "app-release*.apk" -type f | head -1); \
-	if [ -f "$$RELEASE_APK" ]; then \
-		VERSION=$$(node -p "require('./package.json').version"); \
-		BUILD_DATE=$$(date '+%Y-%m-%d_%H-%M-%S'); \
-		RELEASE_FILENAME="DinGelSchwinG-v$$VERSION-release-$$BUILD_DATE.apk"; \
-		cp "$$RELEASE_APK" "releases/$$RELEASE_FILENAME"; \
-		echo "✅ Release APK: releases/$$RELEASE_FILENAME"; \
-	fi
-	@echo ""
-	@echo "📦 APKs available in: releases/"
-	@ls -lh releases/*.apk 2>/dev/null || echo "No APKs found"
+	rm -rf dist android/app/build

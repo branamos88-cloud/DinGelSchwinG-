@@ -1,0 +1,94 @@
+apply plugin: 'com.android.application'
+
+// Release-Signatur: keystore.properties (NICHT ins Git committen!) oder
+// Umgebungsvariablen DSG_KEYSTORE (Base64) / DSG_KEYSTORE_PASS / DSG_KEY_ALIAS.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def signingProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { signingProps.load(it) }
+}
+def envStore = System.getenv('DSG_KEYSTORE')
+def signingStorePassword = signingProps.getProperty('storePassword') ?: System.getenv('DSG_KEYSTORE_PASS')
+def signingKeyAlias = signingProps.getProperty('keyAlias') ?: System.getenv('DSG_KEY_ALIAS') ?: 'dingelschwinng'
+def signingKeyPassword = signingProps.getProperty('keyPassword') ?: System.getenv('DSG_KEYSTORE_PASS')
+def hasReleaseSigning = (envStore != null || signingProps.getProperty('storeFile') != null) && signingStorePassword != null
+if (hasReleaseSigning) {
+    println "Signing: Release-Signatur konfiguriert (Alias: ${signingKeyAlias})"
+} else {
+    println "Signing: keine Release-Signatur konfiguriert → unsigned APK"
+}
+
+android {
+    namespace "com.dingelschwinng.moeagent"
+    compileSdkVersion rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.dingelschwinng.moeagent"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                if (signingProps.getProperty('storeFile') != null) {
+                    storeFile rootProject.file(signingProps.getProperty('storeFile'))
+                } else if (envStore != null) {
+                    def envStoreFile = rootProject.file('ci-keystore.p12')
+                    envStoreFile.bytes = envStore.decodeBase64()
+                    storeFile envStoreFile
+                }
+                if (storeFile.path.toLowerCase().endsWith('.p12')) {
+                    storeType 'PKCS12'
+                }
+                storePassword signingStorePassword
+                keyAlias signingKeyAlias
+                keyPassword signingKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

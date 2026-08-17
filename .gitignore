@@ -23,12 +23,16 @@ dist-ssr
 *.sln
 *.sw?
 
-# Android
-android/
-.gradle/
-build/
-*.apk
-*.aab
-
 # Capacitor
 capacitor/
+
+# Android: Projekt wird committet (Capacitor-Standard),
+# gebaute Binärdateien und Signatur-Schlüssel NICHT.
+android/keystore/
+*.apk
+*.aab
+!apk-output/
+!apk-output/*.apk
+
+# Signing
+keystore.properties
