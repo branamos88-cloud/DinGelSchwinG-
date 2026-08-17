@@ -59,7 +59,11 @@ export default function ReplayEditor() {
     setEditedPoints(prev => {
       const copy = [...prev];
       if (!copy[idx]) copy[idx] = { ...points[idx] };
-      (copy[idx] as any)[key] = typeof val === 'string' ? parseFloat(val) || 0 : val;
+      const next = { ...copy[idx] };
+      if (key === 't' || key === 'freqMHz' || key === 'rssi' || key === 'amp') {
+        next[key] = typeof val === 'string' ? parseFloat(val) || 0 : val;
+      }
+      copy[idx] = next;
       return copy;
     });
   }, [points]);

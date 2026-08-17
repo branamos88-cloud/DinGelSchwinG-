@@ -21,6 +21,8 @@ function pathLoss(rssi: number, txPower: number, n: number): number {
   return Math.pow(10, ratio);
 }
 
+let learnedNState = 2.0;
+
 const JS_SIMULATION: BLEWasmExports = {
   calculate_distance: (rssi: number, tx_power: number) => pathLoss(rssi, tx_power, 2.0),
   calculate_distance_env: (rssi: number, tx_power: number, n: number) => pathLoss(rssi, tx_power, n),
@@ -38,13 +40,14 @@ const JS_SIMULATION: BLEWasmExports = {
     return out;
   },
   learn_from_feedback: (rssi_ref: number, dist_ref: number, rssi_new: number, dist_new: number) => {
-    if (dist_ref <= 0 || dist_new <= 0 || Math.abs(rssi_ref - rssi_new) < 0.001) return 2.0;
+    if (dist_ref <= 0 || dist_new <= 0 || Math.abs(rssi_ref - rssi_new) < 0.001) return learnedNState;
     const ratio = dist_new / dist_ref;
-    if (ratio <= 0) return 2.0;
+    if (ratio <= 0) return learnedNState;
     const n = (rssi_ref - rssi_new) / (10.0 * Math.log10(ratio));
-    return Math.max(1.5, Math.min(6.0, n));
+    learnedNState = Math.max(1.5, Math.min(6.0, n));
+    return learnedNState;
   },
-  get_learned_n: () => 2.0,
+  get_learned_n: () => learnedNState,
 };
 
 /**
