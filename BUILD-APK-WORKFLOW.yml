@@ -1,0 +1,15 @@
+name: Build APK (Compat)
+
+on:
+  push:
+    branches: [main, "arena/*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/android-apk.yml
