@@ -11,7 +11,7 @@
     -moz-osx-font-smoothing: grayscale;
     background: #020617;
     color: #f1f5f9;
-    overflow: hidden;
+    overflow: auto;
   }
   #root { height: 100vh; width: 100vw; }
 }

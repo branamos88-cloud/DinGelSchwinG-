@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, Lock, AlertCircle, Settings, Plus, Trash2, Send, Copy, CheckCircle } from 'lucide-react';
+import { nexus } from '../engine/nexus';
 
 /**
  * MoE Agent Chat Interface mit System-Critical Permission Guards
@@ -385,6 +386,7 @@ export default function MoEChatInterface() {
     const request = permissionRequests.find(r => r.id === requestId);
     if (!request) return;
 
+    nexus.grantPermission(request.rule.id, request.rule.id === 'usb-dongle-flash' ? undefined : 30);
     setGrantedPermissions(prev => [...prev, {
       ruleId: request.rule.id,
       timestamp: Date.now(),
@@ -459,23 +461,19 @@ export default function MoEChatInterface() {
     // Simulate agent response with permission request
     setTimeout(() => {
       const randomAgent = agents[Math.floor(Math.random() * agents.length)];
-      const riskActions = ['flash dongle', 'send data', 'execute command', 'write to filesystem'];
-      
-      if (riskActions.some(action => userInput.toLowerCase().includes(action))) {
-        const criticalRule = DEFAULT_PERMISSION_RULES.find(r => r.requiresConfirm);
-        if (criticalRule) {
-          requestPermission(randomAgent, criticalRule, userInput, `User requested: ${userInput}`);
-        }
+      const reply = nexus.moeReply(userInput);
+      if (reply.needs) {
+        const criticalRule = DEFAULT_PERMISSION_RULES.find(r => r.id === reply.needs) ?? DEFAULT_PERMISSION_RULES.find(r => r.requiresConfirm);
+        if (criticalRule) requestPermission(randomAgent, criticalRule, userInput, `User requested: ${userInput}`);
       }
-
       setMessages(prev => [...prev, {
         id: `msg-${Date.now()}`,
         role: 'assistant',
-        content: `Processing: "${userInput}". ${randomAgent.permissions.some(p => p.requiresConfirm) ? 'This may require system permissions.' : ''}`,
+        content: reply.text,
         agent: randomAgent.name,
         timestamp: Date.now()
       }]);
-    }, 500);
+    }, 200);
 
     setUserInput('');
   };
