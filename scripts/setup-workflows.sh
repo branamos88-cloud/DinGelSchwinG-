@@ -1,6 +1,31 @@
 #!/bin/bash
-set -e
+# ============================================================================
+# DinGelSchwinG — One-Shot: APK-Workflows erstellen, pushen und Build starten
+# ----------------------------------------------------------------------------
+# Warum dieses Skript?
+#   Der Automatisierungs-Bot darf aus Sicherheitsgründen KEINE Dateien in
+#   .github/workflows/ schreiben (fehlende "workflows"-Berechtigung).
+#   Deshalb muss dieser Schritt einmalig mit deinem eigenen GitHub-Login
+#   ausgeführt werden. Danach baut GitHub Actions die APK automatisch.
+#
+# Verwendung (im Repo-Root, mit git + gh CLI eingerichtet):
+#   bash scripts/setup-workflows.sh
+# ============================================================================
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+BRANCH="$(git branch --show-current)"
+if [ -z "$BRANCH" ]; then
+  echo "❌ Kein Git-Branch erkannt (detached HEAD?). Checkout zuerst einen Branch."
+  exit 1
+fi
+echo "👉 Aktiver Branch: $BRANCH"
+
+# 1) Workflow-Verzeichnis anlegen -------------------------------------------
 mkdir -p .github/workflows
+
+# 2) Haupt-Pipeline erstellen ----------------------------------------------
 cat > .github/workflows/android-apk.yml <<'YML'
 name: Android APK — Android 11-14 (API 30-34)
 
@@ -156,6 +181,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 YML
+
+# 3) Alias-Workflow erstellen ----------------------------------------------
 cat > .github/workflows/build-apk.yml <<'YML2'
 name: Build APK (Compat)
 
@@ -173,5 +200,40 @@ jobs:
   build:
     uses: ./.github/workflows/android-apk.yml
 YML2
+
+# 4) Kaputte main.yml (Bash-Befehle statt Workflow) entfernen --------------
+if [ -f .github/workflows/main.yml ]; then
+  rm -f .github/workflows/main.yml
+  echo "🧹 .github/workflows/main.yml (ungültig) entfernt"
+fi
+
+echo ""
 echo "✅ Workflows erstellt:"
 ls -lh .github/workflows/
+
+# 5) Committen & pushen ----------------------------------------------------
+echo ""
+echo "📦 Committe & pushe auf $BRANCH ..."
+git add .github/workflows/android-apk.yml .github/workflows/build-apk.yml
+git add -u .github/workflows/main.yml 2>/dev/null || true
+if ! git diff --cached --quiet; then
+  git commit -m "ci: APK-Workflows für Android 11-14 aktivieren"
+  git push origin "$BRANCH"
+else
+  echo "ℹ️  Keine Änderungen zu pushen."
+fi
+
+# 6) Build starten ----------------------------------------------------------
+echo ""
+echo "🚀 Starte GitHub-Actions-Build (android-apk.yml) auf $BRANCH ..."
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  gh workflow run android-apk.yml --ref "$BRANCH" || \
+    echo "ℹ️  Trigger nicht möglich (Push-Event startet den Build ggf. automatisch)."
+else
+  echo "ℹ️  gh CLI nicht verfügbar/authentifiziert — der Push startet den Build automatisch."
+fi
+
+echo ""
+echo "🎉 Fertig! Verfolge den Build unter:"
+echo "   https://github.com/branamos88-cloud/DinGelSchwinG-/actions"
+echo "   Nach ~5-8 Min: Artifact 'DinGelSchwinG-android11-14' herunterladen."
