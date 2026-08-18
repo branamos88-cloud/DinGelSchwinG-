@@ -1,0 +1,6 @@
+bash scripts/setup-workflows.sh
+git add .github/workflows/android-apk.yml .github/workflows/build-apk.yml
+git commit -m "ci: workflows Android 11-14"
+git push origin arena/01a01284-dingelschwing
+# Falls der Push-Event nicht automatisch triggert (z. B. nach Merge nach main):
+gh workflow run android-apk.yml --ref arena/01a01284-dingelschwing
